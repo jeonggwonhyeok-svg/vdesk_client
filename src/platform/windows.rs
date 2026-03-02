@@ -2917,18 +2917,8 @@ sc start {app_name}
     }
 }
 
-fn run_after_run_cmds(silent: bool) {
-    let (_, _, _, exe) = get_install_info();
-    if !silent {
-        log::debug!("Spawn new window");
-        allow_err!(std::process::Command::new("cmd")
-            .args(&["/c", "timeout", "/t", "2", "&", &format!("{exe}")])
-            .creation_flags(winapi::um::winbase::CREATE_NO_WINDOW)
-            .spawn());
-    }
-    if Config::get_option("stop-service") != "Y" {
-        allow_err!(std::process::Command::new(&exe).arg("--tray").spawn());
-    }
+fn run_after_run_cmds(_silent: bool) {
+    // 메인 창 및 트레이 없이 서비스만 실행
     std::thread::sleep(std::time::Duration::from_millis(300));
 }
 
