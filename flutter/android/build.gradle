@@ -1,0 +1,68 @@
+allprojects {
+    repositories {
+        google()
+        jcenter()
+        maven { url 'https://jitpack.io' }
+    }
+}
+
+// Global ext properties for subprojects
+ext {
+    compileSdkVersion = 36
+    targetSdkVersion = 33
+}
+
+// Set namespace, compileSdk, and JVM target for all Android library modules
+subprojects { project ->
+    project.afterEvaluate {
+        if (project.hasProperty('android')) {
+            project.android {
+                if (namespace == null || namespace.isEmpty()) {
+                    def manifestFile = file("${project.projectDir}/src/main/AndroidManifest.xml")
+                    if (manifestFile.exists()) {
+                        def manifest = new XmlSlurper().parse(manifestFile)
+                        def packageName = manifest.@package.toString()
+                        if (packageName && !packageName.isEmpty()) {
+                            namespace = packageName
+                        }
+                    }
+                }
+            }
+        }
+    }
+    project.plugins.withId("com.android.library") {
+        project.android {
+            compileSdk 36
+            compileOptions {
+                sourceCompatibility JavaVersion.VERSION_17
+                targetCompatibility JavaVersion.VERSION_17
+            }
+        }
+    }
+    project.plugins.withId("org.jetbrains.kotlin.android") {
+        project.android {
+            kotlinOptions {
+                jvmTarget = '17'
+            }
+        }
+    }
+    project.plugins.withId("kotlin-android") {
+        project.android {
+            kotlinOptions {
+                jvmTarget = '17'
+            }
+        }
+    }
+}
+
+rootProject.buildDir = '../build'
+subprojects {
+    project.buildDir = "${rootProject.buildDir}/${project.name}"
+}
+subprojects {
+    project.evaluationDependsOn(':app')
+}
+
+tasks.register("clean", Delete) {
+    delete rootProject.buildDir
+}

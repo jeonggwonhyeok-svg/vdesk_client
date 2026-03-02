@@ -1,0 +1,44 @@
+#!/bin/bash
+# OneDesk macOS PKG postinstall script
+# Registers LaunchDaemon and LaunchAgent for background service
+
+APP_PATH="/Applications/OneDesk.app"
+SCRIPT_DIR="$(dirname "$0")"
+DAEMON_PLIST="com.carriez.OneDesk_service.plist"
+AGENT_PLIST="com.carriez.OneDesk_server.plist"
+
+# Get logged-in user info (postinstall runs as root)
+CONSOLE_USER=$(stat -f%Su /dev/console)
+CONSOLE_UID=$(id -u "$CONSOLE_USER")
+
+# 1. Reset TCC permissions so permission dialogs appear on next launch
+BUNDLE_ID="com.carriez.onedesk"
+tccutil reset Accessibility "$BUNDLE_ID" 2>/dev/null
+tccutil reset ScreenCapture "$BUNDLE_ID" 2>/dev/null
+
+# 2. Remove quarantine attribute
+xattr -rd com.apple.quarantine "$APP_PATH" 2>/dev/null
+
+# 3. Ad-hoc code sign
+codesign --force --deep --sign - "$APP_PATH" 2>/dev/null
+
+# 4. Install daemon plist (from scripts directory)
+cp "$SCRIPT_DIR/$DAEMON_PLIST" /Library/LaunchDaemons/
+chown root:wheel "/Library/LaunchDaemons/$DAEMON_PLIST"
+chmod 644 "/Library/LaunchDaemons/$DAEMON_PLIST"
+
+# 5. Install agent plist (from scripts directory)
+cp "$SCRIPT_DIR/$AGENT_PLIST" /Library/LaunchAgents/
+chown root:wheel "/Library/LaunchAgents/$AGENT_PLIST"
+chmod 644 "/Library/LaunchAgents/$AGENT_PLIST"
+
+# 6. Create root preferences directory
+mkdir -p /var/root/Library/Preferences/com.carriez.OneDesk
+
+# 7. Start daemon service (runs as root — correct for LaunchDaemons)
+launchctl load -w "/Library/LaunchDaemons/$DAEMON_PLIST"
+
+# 8. Start agent in user session (LaunchAgents must be loaded in user context)
+launchctl asuser "$CONSOLE_UID" launchctl load -w "/Library/LaunchAgents/$AGENT_PLIST"
+
+exit 0

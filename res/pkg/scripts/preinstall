@@ -1,0 +1,20 @@
+#!/bin/bash
+# OneDesk macOS PKG preinstall script
+# Stops and removes existing services before installation
+
+# Get logged-in user info (preinstall runs as root)
+CONSOLE_USER=$(stat -f%Su /dev/console)
+CONSOLE_UID=$(id -u "$CONSOLE_USER")
+
+# Unload daemon (root context)
+launchctl unload -w /Library/LaunchDaemons/com.carriez.OneDesk_service.plist 2>/dev/null
+
+# Unload agent from user session (LaunchAgents run in user context)
+launchctl asuser "$CONSOLE_UID" launchctl unload -w /Library/LaunchAgents/com.carriez.OneDesk_server.plist 2>/dev/null
+
+rm -f /Library/LaunchDaemons/com.carriez.OneDesk_service.plist
+rm -f /Library/LaunchAgents/com.carriez.OneDesk_server.plist
+killall OneDesk 2>/dev/null
+killall service 2>/dev/null
+
+exit 0

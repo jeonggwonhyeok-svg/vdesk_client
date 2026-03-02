@@ -1,0 +1,11 @@
+[Desktop Entry]
+Name=OneDesk
+NoDisplay=true
+MimeType=x-scheme-handler/onedesk;
+TryExec=onedesk
+Exec=onedesk %u
+Icon=onedesk
+Terminal=false
+Type=Application
+StartupNotify=false
+StartupWMClass=onedesk

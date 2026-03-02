@@ -1,0 +1,47 @@
+# arg 1:  the new package version
+#pre_install() {
+#}
+
+# arg 1:  the new package version
+post_install() {
+	# do something here
+	cp /usr/share/onedesk/files/onedesk.service /etc/systemd/system/onedesk.service
+	cp /usr/share/onedesk/files/onedesk.desktop /usr/share/applications/
+	cp /usr/share/onedesk/files/onedesk-link.desktop /usr/share/applications/
+	systemctl daemon-reload
+	systemctl enable onedesk
+	systemctl start onedesk
+	update-desktop-database
+}
+
+# arg 1:  the new package version
+# arg 2:  the old package version
+pre_upgrade() {
+    systemctl stop onedesk || true
+}
+
+# arg 1:  the new package version
+# arg 2:  the old package version
+post_upgrade() {
+	cp /usr/share/onedesk/files/onedesk.service /etc/systemd/system/onedesk.service
+	cp /usr/share/onedesk/files/onedesk.desktop /usr/share/applications/
+	cp /usr/share/onedesk/files/onedesk-link.desktop /usr/share/applications/
+	systemctl daemon-reload
+	systemctl enable onedesk
+	systemctl start onedesk
+	update-desktop-database
+}
+
+# arg 1:  the old package version
+pre_remove() {
+	systemctl stop onedesk || true
+	systemctl disable onedesk || true
+	rm /etc/systemd/system/onedesk.service || true
+}
+
+# arg 1:  the old package version
+post_remove() {
+	rm /usr/share/applications/onedesk.desktop || true
+	rm /usr/share/applications/onedesk-link.desktop || true
+	update-desktop-database
+}

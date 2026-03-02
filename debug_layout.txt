@@ -1,0 +1,6 @@
+maxWidth: 640.0
+availableWidth: 608.0
+crossAxisCount: 2
+space: 12.0
+minCardWidth: 296.0
+calc: 2.012987012987013

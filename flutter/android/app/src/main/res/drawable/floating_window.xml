@@ -1,0 +1,26 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="320dp"
+    android:height="320dp"
+    android:viewportWidth="32"
+    android:viewportHeight="32">
+
+    <!-- White circle background -->
+    <path
+        android:fillColor="#ffffff"
+        android:pathData="M16,0A16,16 0,0 1,32 16A16,16 0,0 1,16 32A16,16 0,0 1,0 16A16,16 0,0 1,16 0z"
+        android:strokeColor="#00000000"
+        android:strokeWidth="1"/>
+
+    <!-- OneDesk logo (dot) -->
+    <group
+        android:translateX="6"
+        android:translateY="6">
+        <path
+            android:fillColor="#5F71FF"
+            android:pathData="M6.07,16.975C6.07,18.651 4.711,20.01 3.035,20.01C1.359,20.01 0,18.651 0,16.975C0,15.298 1.359,13.939 3.035,13.939C4.711,13.939 6.07,15.298 6.07,16.975Z"/>
+        <!-- OneDesk logo (J shape) -->
+        <path
+            android:fillColor="#5F71FF"
+            android:pathData="M14.848,0L19.669,13.985C20.66,16.86 18.599,19.852 15.602,19.994L15.605,20H9.242L3.485,10.303H9.848L15.067,19.093L8.485,0H14.848Z"/>
+    </group>
+</vector>

@@ -1,0 +1,201 @@
+name: Build OneDesk Windows
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - master
+    paths-ignore:
+      - "docs/**"
+      - "**.md"
+      - "flutter/lib/mobile/**"
+      - "flutter/android/**"
+      - "flutter/ios/**"
+
+env:
+  RUST_VERSION: "1.75"
+  LLVM_VERSION: "15.0.6"
+  FLUTTER_VERSION: "3.41.0"
+  VCPKG_BINARY_SOURCES: "clear;x-gha,readwrite"
+  VCPKG_COMMIT_ID: "120deac3062162151622ca4860575a33844ba10b"
+  VERSION: "1.4.4"
+
+jobs:
+  generate-bridge:
+    uses: ./.github/workflows/bridge.yml
+
+  build-topmostwindow:
+    uses: ./.github/workflows/third-party-onedeskTempTopMostWindow.yml
+    with:
+      upload-artifact: true
+      target: windows-2022
+      configuration: Release
+      platform: x64
+      target_version: Windows10
+    strategy:
+      fail-fast: false
+
+  build-windows:
+    name: Windows x86_64 Flutter
+    needs: [generate-bridge, build-topmostwindow]
+    runs-on: windows-2022
+    steps:
+      - name: Export GitHub Actions cache environment variables
+        uses: actions/github-script@v6
+        with:
+          script: |
+            core.exportVariable('ACTIONS_CACHE_URL', process.env.ACTIONS_CACHE_URL || '');
+            core.exportVariable('ACTIONS_RUNTIME_TOKEN', process.env.ACTIONS_RUNTIME_TOKEN || '');
+
+      - name: Checkout source code
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Restore bridge files
+        uses: actions/download-artifact@master
+        with:
+          name: bridge-artifact
+          path: ./
+
+      - name: Install LLVM and Clang
+        uses: KyleMayes/install-llvm-action@v1
+        with:
+          version: ${{ env.LLVM_VERSION }}
+
+      - name: Install Flutter
+        uses: subosito/flutter-action@v2.12.0
+        with:
+          channel: "stable"
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@v1
+        with:
+          toolchain: ${{ env.RUST_VERSION }}
+          targets: x86_64-pc-windows-msvc
+          components: "rustfmt"
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          prefix-key: windows-2022
+
+      - name: Setup vcpkg with Github Actions binary cache
+        uses: lukka/run-vcpkg@v11
+        with:
+          vcpkgDirectory: C:\vcpkg
+          vcpkgGitCommitId: ${{ env.VCPKG_COMMIT_ID }}
+          doNotCache: false
+
+      - name: Install vcpkg dependencies
+        shell: bash
+        env:
+          VCPKG_DEFAULT_HOST_TRIPLET: x64-windows-static
+        run: |
+          if ! $VCPKG_ROOT/vcpkg \
+            install \
+            --triplet x64-windows-static \
+            --x-install-root="$VCPKG_ROOT/installed"; then
+            find "${VCPKG_ROOT}/" -name "*.log" | while read -r _1; do
+              echo "$_1:"
+              echo "======"
+              cat "$_1"
+              echo "======"
+              echo ""
+            done
+            exit 1
+          fi
+
+      - name: Build OneDesk
+        run: |
+          python3 .\build.py --portable --hwcodec --flutter --vram --skip-portable-pack
+          mv ./flutter/build/windows/x64/runner/Release ./onedesk
+
+          # Download usbmmidd_v2
+          Invoke-WebRequest -Uri https://github.com/rustdesk-org/rdev/releases/download/usbmmidd_v2/usbmmidd_v2.zip -OutFile usbmmidd_v2.zip
+          Expand-Archive usbmmidd_v2.zip -DestinationPath .
+          Remove-Item -Path usbmmidd_v2\Win32 -Recurse
+          Remove-Item -Path "usbmmidd_v2\deviceinstaller64.exe", "usbmmidd_v2\deviceinstaller.exe", "usbmmidd_v2\usbmmidd.bat"
+          mv -Force .\usbmmidd_v2 ./onedesk
+
+          # Download printer driver
+          try {
+            Invoke-WebRequest -Uri https://github.com/rustdesk/hbb_common/releases/download/driver/rustdesk_printer_driver_v4-1.4.zip -OutFile rustdesk_printer_driver_v4-1.4.zip
+            Invoke-WebRequest -Uri https://github.com/rustdesk/hbb_common/releases/download/driver/printer_driver_adapter.zip -OutFile printer_driver_adapter.zip
+            Invoke-WebRequest -Uri https://github.com/rustdesk/hbb_common/releases/download/driver/sha256sums -OutFile sha256sums
+
+            $checksum_driver = (Select-String -Path .\sha256sums -Pattern '^([a-fA-F0-9]{64}) \*rustdesk_printer_driver_v4-1.4\.zip$').Matches.Groups[1].Value
+            $downloadsum_driver = Get-FileHash -Path rustdesk_printer_driver_v4-1.4.zip -Algorithm SHA256
+            $checksum_adapter = (Select-String -Path .\sha256sums -Pattern '^([a-fA-F0-9]{64}) \*printer_driver_adapter\.zip$').Matches.Groups[1].Value
+            $downloadsum_adapter = Get-FileHash -Path printer_driver_adapter.zip -Algorithm SHA256
+            if ($checksum_driver -eq $downloadsum_driver.Hash -and $checksum_adapter -eq $downloadsum_adapter.Hash) {
+                Write-Output "Printer driver checksums match, extracting."
+                Expand-Archive rustdesk_printer_driver_v4-1.4.zip -DestinationPath .
+                mkdir ./onedesk/drivers
+                mv -Force .\rustdesk_printer_driver_v4-1.4 ./onedesk/drivers/RustDeskPrinterDriver
+                Expand-Archive printer_driver_adapter.zip -DestinationPath .
+                mv -Force .\printer_driver_adapter.dll ./onedesk
+            } else {
+                Write-Output "Printer driver checksums do not match, skipping."
+            }
+          } catch {
+              Write-Host "Ignore the printer driver error."
+          }
+
+      - name: Download OneDeskTempTopMostWindow artifacts
+        uses: actions/download-artifact@master
+        with:
+          name: topmostwindow-artifacts
+          path: "./onedesk"
+
+      - name: find Runner.res
+        continue-on-error: true
+        shell: bash
+        run: |
+          runner_res=$(find . -name "Runner.res");
+          if [ "$runner_res" == "" ]; then
+            echo "Runner.res: not found";
+          else
+            echo "Runner.res: $runner_res";
+            cp $runner_res ./libs/portable/Runner.res;
+          fi
+
+      - name: Build self-extracted executable
+        shell: bash
+        run: |
+          sed -i '/dpiAware/d' res/manifest.xml
+          pushd ./libs/portable
+          pip3 install -r requirements.txt
+          python3 ./generate.py -f ../../onedesk/ -o . -e ../../onedesk/onedesk.exe
+          popd
+          mkdir -p ./SignOutput
+          mv ./target/release/onedesk-portable-packer.exe ./SignOutput/onedesk-${{ env.VERSION }}-x86_64.exe
+
+      - name: Add MSBuild to PATH
+        uses: microsoft/setup-msbuild@v2
+
+      - name: Build MSI
+        run: |
+          pushd ./res/msi
+          python preprocess.py --arp -d ../../onedesk
+          nuget restore msi.sln
+          msbuild msi.sln -p:Configuration=Release -p:Platform=x64 /p:TargetVersion=Windows10
+          mv ./Package/bin/x64/Release/en-us/Package.msi ../../SignOutput/onedesk-${{ env.VERSION }}-x86_64.msi
+
+      - name: Upload portable exe
+        uses: actions/upload-artifact@master
+        with:
+          name: onedesk-windows-x86_64-exe
+          path: ./SignOutput/onedesk-${{ env.VERSION }}-x86_64.exe
+
+      - name: Upload MSI installer
+        uses: actions/upload-artifact@master
+        with:
+          name: onedesk-windows-x86_64-msi
+          path: ./SignOutput/onedesk-${{ env.VERSION }}-x86_64.msi
+
+      - name: Upload unsigned build
+        uses: actions/upload-artifact@master
+        with:
+          name: onedesk-unsigned-windows-x86_64
+          path: onedesk
