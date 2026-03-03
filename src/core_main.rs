@@ -90,9 +90,17 @@ pub fn core_main() -> Option<Vec<String>> {
         let should_check_start_tray = crate::platform::is_self_service_running()
             && crate::platform::is_cur_exe_the_installed();
         if should_check_start_tray && !crate::check_process("--tray", true) {
-            #[cfg(target_os = "linux")]
-            hbb_common::allow_err!(crate::platform::check_autostart_config());
-            hbb_common::allow_err!(crate::run_me(vec!["--tray"]));
+            // In headless service (Auto approve) mode, never launch the tray icon.
+            #[cfg(target_os = "windows")]
+            let suppress_tray = hbb_common::password_security::approve_mode()
+                == hbb_common::password_security::ApproveMode::Auto;
+            #[cfg(not(target_os = "windows"))]
+            let suppress_tray = false;
+            if !suppress_tray {
+                #[cfg(target_os = "linux")]
+                hbb_common::allow_err!(crate::platform::check_autostart_config());
+                hbb_common::allow_err!(crate::run_me(vec!["--tray"]));
+            }
         }
     }
     #[cfg(not(debug_assertions))]
@@ -198,22 +206,18 @@ pub fn core_main() -> Option<Vec<String>> {
 
         #[cfg(windows)]
         {
+            // In headless service (Auto approve) mode, skip Flutter entirely.
+            // The Windows service manages everything; no UI is needed.
+            if hbb_common::password_security::approve_mode()
+                == hbb_common::password_security::ApproveMode::Auto
+            {
+                return None;
+            }
             hbb_common::config::PeerConfig::preload_peers();
             // Auto-start Windows service if installed but not running
             std::thread::spawn(|| {
                 crate::platform::windows::try_start_service_if_not_running();
             });
-        }
-
-        // In headless service mode (Auto approve + service running),
-        // skip the Flutter main window entirely.
-        #[cfg(windows)]
-        if hbb_common::password_security::approve_mode()
-            == hbb_common::password_security::ApproveMode::Auto
-            && crate::platform::is_self_service_running()
-        {
-            std::thread::spawn(move || crate::start_server(false, no_server));
-            return None;
         }
 
         std::thread::spawn(move || crate::start_server(false, no_server));
@@ -403,20 +407,26 @@ pub fn core_main() -> Option<Vec<String>> {
             }
             #[cfg(windows)]
             crate::privacy_mode::restore_reg_connectivity(true, false);
-            // Write device ID to Desktop so admins can easily find the remote ID
+            // Write device ID to Public Desktop so admins can easily find the remote ID.
+            // We use %PUBLIC%\Desktop (C:\Users\Public\Desktop) because --server may run
+            // with SYSTEM token (via LaunchProcessWin), where %USERPROFILE% points to the
+            // SYSTEM profile path, not the logged-in user's Desktop. The Public Desktop
+            // is visible to all users and is always accessible by SYSTEM.
             #[cfg(windows)]
             {
                 let id = hbb_common::config::Config::get_id();
                 if !id.is_empty() {
-                    if let Ok(userprofile) = std::env::var("USERPROFILE") {
-                        let desktop =
-                            std::path::PathBuf::from(userprofile).join("Desktop");
+                    let desktop = if let Ok(public) = std::env::var("PUBLIC") {
+                        std::path::PathBuf::from(public).join("Desktop")
+                    } else if let Ok(userprofile) = std::env::var("USERPROFILE") {
+                        std::path::PathBuf::from(userprofile).join("Desktop")
+                    } else {
+                        std::path::PathBuf::new()
+                    };
+                    if desktop.as_os_str().len() > 0 {
                         let app_name = crate::get_app_name().to_lowercase();
                         let id_file = desktop.join(format!("{}-id.txt", app_name));
-                        let _ = std::fs::write(
-                            &id_file,
-                            format!("{}\n", id),
-                        );
+                        let _ = std::fs::write(&id_file, format!("{}\n", id));
                     }
                 }
             }
