@@ -1169,9 +1169,15 @@ impl Connection {
 
     async fn on_open(&mut self, addr: SocketAddr) -> bool {
         log::debug!("#{} Connection opened from {}.", self.inner.id, addr);
-        // Reject connections if user is not logged in
-        // Use get_option_from_file to read fresh from disk (the --server process cache may be stale)
-        if hbb_common::config::LocalConfig::get_option_from_file("user_info").is_empty() {
+        // Reject connections if user is not logged in.
+        // Use get_option_from_file to read fresh from disk (the --server process cache may be stale).
+        // Skip this check in Auto approve (headless service) mode: --server runs as SYSTEM and has
+        // no user_info in its LocalConfig, but connections should always be accepted.
+        let is_auto_mode = hbb_common::password_security::approve_mode()
+            == hbb_common::password_security::ApproveMode::Auto;
+        if !is_auto_mode
+            && hbb_common::config::LocalConfig::get_option_from_file("user_info").is_empty()
+        {
             self.send_login_error("Remote desktop is offline").await;
             return false;
         }
