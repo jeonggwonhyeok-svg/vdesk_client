@@ -205,6 +205,17 @@ pub fn core_main() -> Option<Vec<String>> {
             });
         }
 
+        // In headless service mode (Auto approve + service running),
+        // skip the Flutter main window entirely.
+        #[cfg(windows)]
+        if hbb_common::password_security::approve_mode()
+            == hbb_common::password_security::ApproveMode::Auto
+            && crate::platform::is_self_service_running()
+        {
+            std::thread::spawn(move || crate::start_server(false, no_server));
+            return None;
+        }
+
         std::thread::spawn(move || crate::start_server(false, no_server));
     } else {
         #[cfg(windows)]
