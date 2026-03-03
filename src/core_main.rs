@@ -407,6 +407,12 @@ pub fn core_main() -> Option<Vec<String>> {
             }
             #[cfg(windows)]
             crate::privacy_mode::restore_reg_connectivity(true, false);
+            // Clear stop-service flag so the rendezvous mediator always registers.
+            // If a previous Flutter logout or UI action set stop-service="Y" in the
+            // config, the headless --server would silently skip rendezvous registration
+            // and appear "offline". Clearing it here ensures the server always connects.
+            #[cfg(windows)]
+            hbb_common::config::Config::set_option("stop-service".into(), "".into());
             // Write device ID to Public Desktop so admins can easily find the remote ID.
             // We use %PUBLIC%\Desktop (C:\Users\Public\Desktop) because --server may run
             // with SYSTEM token (via LaunchProcessWin), where %USERPROFILE% points to the
