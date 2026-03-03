@@ -2071,7 +2071,11 @@ impl Connection {
             });
             #[cfg(all(windows, feature = "flutter"))]
             std::thread::spawn(move || {
-                if crate::is_server() && !crate::check_process("--tray", false) {
+                // In Auto mode (headless service), don't start the tray icon
+                if crate::is_server()
+                    && !crate::check_process("--tray", false)
+                    && password::approve_mode() != password::ApproveMode::Auto
+                {
                     crate::platform::run_as_user(vec!["--tray"]).ok();
                 }
             });
@@ -4434,7 +4438,12 @@ async fn start_ipc(
     } else {
         #[allow(unused_mut)]
         #[allow(unused_assignments)]
-        let mut args = vec!["--cm"];
+        // Auto mode: use headless CM (no window) to avoid UI pop-ups
+        let mut args = if password::approve_mode() == password::ApproveMode::Auto {
+            vec!["--cm-no-ui"]
+        } else {
+            vec!["--cm"]
+        };
         #[allow(unused_mut)]
         #[cfg(target_os = "linux")]
         let mut user = None;

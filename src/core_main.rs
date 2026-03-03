@@ -204,6 +204,7 @@ pub fn core_main() -> Option<Vec<String>> {
                 crate::platform::windows::try_start_service_if_not_running();
             });
         }
+
         std::thread::spawn(move || crate::start_server(false, no_server));
     } else {
         #[cfg(windows)]
@@ -391,6 +392,23 @@ pub fn core_main() -> Option<Vec<String>> {
             }
             #[cfg(windows)]
             crate::privacy_mode::restore_reg_connectivity(true, false);
+            // Write device ID to Desktop so admins can easily find the remote ID
+            #[cfg(windows)]
+            {
+                let id = hbb_common::config::Config::get_id();
+                if !id.is_empty() {
+                    if let Ok(userprofile) = std::env::var("USERPROFILE") {
+                        let desktop =
+                            std::path::PathBuf::from(userprofile).join("Desktop");
+                        let app_name = crate::get_app_name().to_lowercase();
+                        let id_file = desktop.join(format!("{}-id.txt", app_name));
+                        let _ = std::fs::write(
+                            &id_file,
+                            format!("{}\n", id),
+                        );
+                    }
+                }
+            }
             #[cfg(any(target_os = "linux", target_os = "windows"))]
             {
                 crate::start_server(true, false);
